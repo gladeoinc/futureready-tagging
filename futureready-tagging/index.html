@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FutureReady Video Explorer</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background:#f7f9fc; color:#101828; }
+    .wrap { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+    h1 { margin: 0 0 8px; }
+    .muted { color:#475467; margin-bottom: 16px; }
+    .grid { display:grid; grid-template-columns: 280px 1fr; gap:16px; }
+    .panel { background:#fff; border:1px solid #e4e7ec; border-radius:12px; padding:12px; }
+    label { display:block; font-size:12px; color:#475467; margin:8px 0 4px; }
+    select, input { width:100%; padding:8px; border:1px solid #d0d5dd; border-radius:8px; box-sizing:border-box; }
+    select[multiple] { min-height:120px; }
+    .stats { margin:8px 0 12px; font-weight:600; }
+    table { width:100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom:1px solid #eaecf0; padding:8px; text-align:left; vertical-align:top; }
+    th { background:#f9fafb; position:sticky; top:0; }
+    .table-wrap { max-height: 520px; overflow:auto; border:1px solid #eaecf0; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FutureReady Video Explorer</h1>
+    <div class="muted">Filter videos by skills, topics, sectors, competency, and keyword search.</div>
+    <div class="grid">
+      <div class="panel">
+        <label>Search</label>
+        <input id="q" placeholder="title, transcript, tags" />
+
+        <label>Skills</label>
+        <select id="skills" multiple></select>
+
+        <label>Topics</label>
+        <select id="topics" multiple></select>
+
+        <label>Career Sectors</label>
+        <select id="sectors" multiple></select>
+
+        <label>Competency</label>
+        <select id="competency" multiple></select>
+      </div>
+
+      <div class="panel">
+        <div class="stats" id="stats">Loading...</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Video ID</th>
+                <th>Title</th>
+                <th>Competency</th>
+                <th>Skills</th>
+                <th>Topics</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let data = [];
+
+    const els = {
+      q: document.getElementById('q'),
+      skills: document.getElementById('skills'),
+      topics: document.getElementById('topics'),
+      sectors: document.getElementById('sectors'),
+      competency: document.getElementById('competency'),
+      stats: document.getElementById('stats'),
+      rows: document.getElementById('rows'),
+    };
+
+    const uniq = (arr) => [...new Set(arr)].filter(Boolean).sort((a,b)=>a.localeCompare(b));
+    const selected = (el) => Array.from(el.selectedOptions).map(o => o.value);
+    const hasAll = (wanted, values=[]) => wanted.every(v => values.includes(v));
+
+    function fillSelect(el, values) {
+      el.innerHTML = values.map(v => `<option value="${v.replace(/"/g,'&quot;')}">${v}</option>`).join('');
+    }
+
+    function textBlob(r) {
+      return [
+        r.title || '',
+        r.transcript || '',
+        (r.skills || []).join(' '),
+        (r.topics || []).join(' '),
+        (r.career_sectors || []).join(' '),
+        r.competency || ''
+      ].join(' ').toLowerCase();
+    }
+
+    function render() {
+      const q = els.q.value.trim().toLowerCase();
+      const f = {
+        skills: selected(els.skills),
+        topics: selected(els.topics),
+        sectors: selected(els.sectors),
+        competency: selected(els.competency),
+      };
+
+      const filtered = data.filter(r => {
+        if (f.skills.length && !hasAll(f.skills, r.skills || [])) return false;
+        if (f.topics.length && !hasAll(f.topics, r.topics || [])) return false;
+        if (f.sectors.length && !hasAll(f.sectors, r.career_sectors || [])) return false;
+        if (f.competency.length && !f.competency.includes(r.competency || '')) return false;
+        if (q && !textBlob(r).includes(q)) return false;
+        return true;
+      });
+
+      els.stats.textContent = `Results: ${filtered.length} of ${data.length}`;
+      els.rows.innerHTML = filtered.map(r => `
+        <tr>
+          <td>${r.video_id || ''}</td>
+          <td>${r.title || ''}</td>
+          <td>${r.competency || ''}</td>
+          <td>${(r.skills || []).join(', ')}</td>
+          <td>${(r.topics || []).join(', ')}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function init() {
+      const res = await fetch('./futureready_videos.json', { cache: 'no-store' });
+      data = await res.json();
+
+      fillSelect(els.skills, uniq(data.flatMap(r => r.skills || [])));
+      fillSelect(els.topics, uniq(data.flatMap(r => r.topics || [])));
+      fillSelect(els.sectors, uniq(data.flatMap(r => r.career_sectors || [])));
+      fillSelect(els.competency, uniq(data.map(r => r.competency || '').filter(Boolean)));
+
+      ['input','change'].forEach(evt => {
+        els.q.addEventListener(evt, render);
+        els.skills.addEventListener(evt, render);
+        els.topics.addEventListener(evt, render);
+        els.sectors.addEventListener(evt, render);
+        els.competency.addEventListener(evt, render);
+      });
+
+      render();
+    }
+
+    init().catch(err => {
+      els.stats.textContent = `Failed to load dataset: ${err}`;
+    });
+  </script>
+</body>
+</html>
